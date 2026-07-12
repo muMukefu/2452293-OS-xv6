@@ -61,5 +61,55 @@ void
 memdump(char *fmt, char *data)
 {
   // Your code here.
+  char *p = data;  // 当前读取位置
+  for(int i = 0; fmt[i] != '\0'; i++){
+    switch(fmt[i]){
+      case 'i':{
+        //即int
+        int val = *(int *)p;
+        printf("%d\n", val);
+        p += 4;
+        break; 
+      }
 
+      case 'p': {
+        unsigned long val = *(unsigned long *)p;
+        printf("%lx\n", val);
+        p += 8;
+        break;
+      }
+
+      case 'h': {
+        short val = *(short *)p;
+        printf("%d\n", val);
+        p += 2;
+        break;
+      }
+            
+      case 'c': {
+        char val = *p;
+        printf("%c\n", val);
+        p += 1;
+        break;
+      }
+            
+      case 's': {
+        char *str_ptr = *(char **)p;
+        printf("%s\n", str_ptr);
+        p += 8;
+        break;
+      }
+            
+      case 'S': {
+        // 剩余所有数据作为字符串
+        printf("%s\n", p);
+        while (*p != '\0') p++;
+        p++;
+        break;
+      }
+            
+      default:
+        break;
+    }
+  }
 }
