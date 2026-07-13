@@ -101,6 +101,7 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
+extern uint64 sys_interpose(void);//my alter
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -126,22 +127,80 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_interpose] sys_interpose,//my alter
 };
 
 void
 syscall(void)
 {
   int num;
-  struct proc *p = myproc();
+  struct proc* p = myproc();
 
   num = p->trapframe->a7;
-  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    // Use num to lookup the system call function for num, call it,
-    // and store its return value in p->trapframe->a0
+
+  // 检查系统调用是否被禁止
+  if (num > 0 && num < NELEM(syscalls) && (p->mask & (1 << num))) {
+    // 对 open 和 exec 特殊处理：让 sys_open/sys_exec 自己判断路径
+    if (num == SYS_open || num == SYS_exec) {
+      // 不在这里拦截，让 sys_open/sys_exec 自己处理
+      if (syscalls[num]) {
+        p->trapframe->a0 = syscalls[num]();
+      }
+      else {
+        p->trapframe->a0 = -1;
+      }
+      return;
+    }
+
+    // 其他系统调用直接拒绝
+    p->trapframe->a0 = -1;
+    return;
+  }
+
+  if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
-  } else {
+  }
+  else {
     printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
+      p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
+  /*
+  // 检查系统调用是否被禁止
+  if (num > 0 && num < NELEM(syscalls) && (p->mask & (1 << num))) {
+    p->trapframe->a0 = -1;
+    //printf("%d %s: system call %d is forbidden\n", p->pid, p->name, num);
+    //return;
+    if (num == SYS_open || num == SYS_exec) {
+      // 不在这里拦截，让 sys_open/sys_exec 自己处理
+      if (syscalls[num]) {
+        p->trapframe->a0 = syscalls[num]();
+      }
+      else {
+        p->trapframe->a0 = -1;
+      }
+      return;
+  }
+
+  if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+    p->trapframe->a0 = syscalls[num]();
+  }
+  else {
+    printf("%d %s: unknown sys call %d\n",
+      p->pid, p->name, num);
+    p->trapframe->a0 = -1;
+  }
+
+  
+    //num = *(int*)0;
+    if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+      // Use num to lookup the system call function for num, call it,
+      // and store its return value in p->trapframe->a0
+      p->trapframe->a0 = syscalls[num]();
+    } else {
+      printf("%d %s: unknown sys call %d\n",
+              p->pid, p->name, num);
+      p->trapframe->a0 = -1;
+    }
+  */
 }

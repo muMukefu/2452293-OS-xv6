@@ -197,19 +197,19 @@ UPROGS=\
 	$U/_dorphan\
 
 
-
 ifeq ($(LAB),util)
 UPROGS += \
 	$U/_sleep\
 	$U/_sixfive\
+	$U/_memdump\
 	$U/_find
 endif
-### ENDIF
 
 
 ifeq ($(LAB),syscall)
 UPROGS += \
 	$U/_attack\
+	$U/_sandbox\
 	$U/_secret
 endif
 
@@ -285,9 +285,12 @@ ifeq ($(LAB),util)
 	UEXTRA += user/sixfive.txt
 	UPROGS += $U/_memdump
 endif
+
+#my alter
 ifeq ($(LAB),syscall)
-	UEXTRA += user/exec.sh
+    UEXTRA += user/exec.sh
 endif
+
 
 fs.img: mkfs/mkfs README $(UEXTRA) $(UPROGS)
 	mkfs/mkfs fs.img README $(UEXTRA) $(UPROGS)

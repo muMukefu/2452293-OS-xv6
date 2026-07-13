@@ -1,0 +1,6 @@
+1. usertrap()
+2. a7 = 0x5, SYS_open
+3. User mode, SPP = 0
+4. lw a3, 0(zero), register a3
+5. 因为 num = *(int *)0 试图读取地址 0，而地址 0 在内核地址空间中未映射，导致 page fault（scause=0xd），内核崩溃。
+6. init, pid = 1

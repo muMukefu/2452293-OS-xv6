@@ -287,6 +287,9 @@ kfork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  np->mask = p->mask;//my alter
+  safestrcpy(np->allowed_path, p->allowed_path, MAXPATH);  //my alter
+
   pid = np->pid;
 
   release(&np->lock);

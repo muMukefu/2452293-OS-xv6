@@ -15,6 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "syscall.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -309,10 +310,26 @@ sys_open(void)
   struct file *f;
   struct inode *ip;
   int n;
+  struct proc* p = myproc();
 
   argint(1, &omode);
   if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
+
+  //my alter:检查是否被mask且路径不匹配
+  if (p->mask & (1 << SYS_open)) {
+    int same = 1;
+    int i = 0;
+    while (path[i] && p->allowed_path[i] && path[i] == p->allowed_path[i]) {
+      i++;
+    }
+    if (path[i] != p->allowed_path[i]) {
+      same = 0;
+    }
+    if (!same) {
+      return -1;
+    }
+  }
 
   begin_op();
 
@@ -436,12 +453,29 @@ sys_exec(void)
 {
   char path[MAXPATH], *argv[MAXARG];
   int i;
+  struct proc* p = myproc();
   uint64 uargv, uarg;
 
   argaddr(1, &uargv);
   if(argstr(0, path, MAXPATH) < 0) {
     return -1;
   }
+
+  //my alter:检查是否被mask且路径不匹配
+  if (p->mask & (1 << SYS_exec)) {
+    int same = 1;
+    int i = 0;
+    while (path[i] && p->allowed_path[i] && path[i] == p->allowed_path[i]) {
+      i++;
+    }
+    if (path[i] != p->allowed_path[i]) {
+      same = 0;
+    }
+    if (!same) {
+      return -1;
+    }
+  }
+
   memset(argv, 0, sizeof(argv));
   for(i=0;; i++){
     if(i >= NELEM(argv)){

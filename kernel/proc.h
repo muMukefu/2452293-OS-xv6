@@ -104,4 +104,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  
+  int mask;                  // my alter: 系统调用掩码
+  char allowed_path[MAXPATH];  // my alter: 掩码允许的路径名
 };
