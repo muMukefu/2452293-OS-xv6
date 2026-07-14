@@ -1,0 +1,68 @@
+需要解释四件事：
+
+va：虚拟地址（Virtual Address）
+pte：页表项（Page Table Entry）的完整 64 位值
+pa：映射到的物理页地址（Physical Address）
+perm：页权限（Permission Bits）
+
+并说明：
+
+这一页为什么存在？
+是代码段？数据段？栈？trapframe？trampoline？
+为什么有这些权限？
+
+RISC-V 页表项最低几位分别表示：
+
+位	宏	含义
+0	PTE_V	Valid
+1	PTE_R	Read
+2	PTE_W	Write
+3	PTE_X	Execute
+4	PTE_U	User
+5	PTE_G	Global（xv6 不用）
+6	PTE_A	Accessed
+7	PTE_D	Dirty
+
+前10个页表项（低地址区域）
+1. va 0x0, pte 0x21FC885B, pa 0x87F22000, perm 0x5B
+权限位 0x5B = 01011011₂
+V=1 (有效), R=1 (可读), W=0 (不可写), X=1 (可执行), U=1 (用户可访问)
+含义：代码页（text segment），包含程序的指令。用户可读可执行，但不可写。
+
+2. va 0x1000, pte 0x21FC7C5B, pa 0x87F1F000, perm 0x5B
+同样是 0x5B 权限
+含义：也是代码页或只读数据页，用户可读可执行。
+
+3. va 0x2000, pte 0x21FC7817, pa 0x87F1E000, perm 0x17
+权限位 0x17 = 00010111₂
+V=1, R=1, W=1, X=0, U=1
+含义：数据页（data segment），用户可读写，但不可执行。这是全局变量或堆的初始部分。
+
+4. va 0x3000, pte 0x21FC7407, pa 0x87F1D000, perm 0x7
+权限位 0x7 = 00000111₂
+V=1, R=1, W=1, X=0, U=0 (注意U=0!)
+含义：数据页，但仅内核可访问（U=0）。这可能是守护页（guard page）或内核数据。
+
+5. va 0x4000, pte 0x21FC70D7, pa 0x87F1C000, perm 0xD7
+权限位 0xD7 = 11010111₂
+V=1, R=1, W=1, X=0, U=1, 另外 PTE_D (dirty) 和 PTE_A (accessed) 位被设置
+含义：用户数据页，可读写，已经被访问过且被修改过（dirty）。
+
+6-10. va 0x5000 到 0x9000, pte 0x0
+含义：这些虚拟地址没有有效的页表映射（PTE 无效）。访问这些地址会导致 page fault。
+
+最后10个页表项（高地址区域）
+虚拟地址从 0x3FFFFF6000 到 0x3FFFFFF000（注意这些是 64 位地址，接近用户地址空间顶部）
+11-18. va 0x3FFFFF6000 到 0x3FFFFFD000, pte 0x0
+这些都没有映射，PTE 无效。
+
+19. va 0x3FFFFFE000, pte 0x21FD08C7, pa 0x87F42000, perm 0xC7
+权限位 0xC7 = 11000111₂
+V=1, R=1, W=1, X=0, U=0
+含义：内核数据页，仅内核可读写（U=0）。这是内核栈或内核数据结构。
+
+20. va 0x3FFFFFF000, pte 0x2000184B, pa 0x80006000, perm 0x4B
+权限位 0x4B = 01001011₂
+V=1, R=1, W=0, X=1, U=0? 实际上需要仔细分析
+0x4B = 读+执行，但 U=0，所以仅内核可访问
+含义：内核代码页（trampoline page），用于用户-内核切换。这是 xv6 的 trampoline 代码。

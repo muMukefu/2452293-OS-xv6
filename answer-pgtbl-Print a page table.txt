@@ -1,0 +1,42 @@
+vmprint 输出的是整个 RISC-V Sv39 三级页表。其中，中间节点（只具有 PTE_V 位，没有 R/W/X 权限）表示它们指向下一层页表；而**叶子页（Leaf Page）**具有 R、W 或 X 等权限位，表示已经完成了虚拟地址到物理页的最终映射。
+
+根据实验输出，各个叶子页的含义如下：
+
+低地址区域（0x0000000000000000 - 0x0000000000004000）
+虚拟地址	物理地址	权限	内容
+0x0000000000000000	0x87f1e000	PTE_R|PTE_W|PTE_X|PTE_U (0x5B)	用户代码/数据的第一页
+0x0000000000001000	0x87f1b000	PTE_R|PTE_W|PTE_X|PTE_U (0x5B)	用户代码/数据
+0x0000000000002000	0x87f1a000	PTE_W|PTE_X|PTE_U (0x17)	用户代码/数据
+0x0000000000003000	0x87f19000	PTE_W|PTE_U (0x07)	用户数据（可读写）
+0x0000000000004000	0x87f18000	PTE_R|PTE_W|PTE_X|PTE_U (0xD7)	用户代码/数据
+说明：这些是用户进程的代码段和数据段。其中：
+
+0x5B = PTE_R | PTE_W | PTE_X | PTE_U（用户可读、写、执行）
+
+0x17 = PTE_W | PTE_X | PTE_U（用户可写、执行，但不可读——较少见）
+
+0x07 = PTE_W | PTE_U（用户可读写，不可执行——数据段）
+
+0xD7 = PTE_R | PTE_W | PTE_X | PTE_U 加上 PTE_D（脏页）
+
+高地址区域（0x3FFFFFF000 附近）
+虚拟地址	物理地址	权限	内容
+0x3fffffd000	0x87f52000	PTE_R|PTE_X|PTE_U (0x53)	USYSCALL 页面？或 trapframe？
+0x3fffffe000	0x87f40000	PTE_R|PTE_W|PTE_U (0xC7)	Trapframe 页面
+0x3ffffff000	0x80006000	PTE_R|PTE_X|PTE_U (0x4B)	Trampoline 页面
+说明：
+
+0x3fffffd000：这是 USYSCALL 页面（存储 PID），权限 PTE_R|PTE_U，只读
+
+0x3fffffe000：这是 Trapframe 页面，存储用户寄存器状态，权限 PTE_R|PTE_W|PTE_U
+
+0x3ffffff000：这是 Trampoline 页面，用于系统调用返回，权限 PTE_R|PTE_X|PTE_U
+
+
+与上一题 print_pgtbl 输出的关系
+
+上一题 print_pgtbl 直接输出的是每个虚拟页对应的最终页表项（PTE），包括虚拟地址、页表项内容、物理地址以及权限位，因此只能看到最终完成映射的叶子页。
+
+而本题中的 vmprint 输出的是完整的三级页表结构。除了最终的叶子页外，它还打印了所有中间页表项，并通过缩进表示页表层次：一级页表、二级页表、三级页表。中间页表项仅用于指向下一层页表，不直接映射物理页；只有最底层的叶子页才真正完成虚拟地址到物理地址的映射。
+
+因此，print_pgtbl 展示的是最终的映射结果，而 vmprint 展示的是这些映射在三级页表中的组织结构。 两者中的叶子页一一对应，例如代码段、数据段、保护页、用户栈、USYSCALL、Trapframe 和 Trampoline 等页面，在 vmprint 中都可以找到对应的最终叶子页，只是 vmprint 额外展示了到达这些叶子页所经过的页表层次。

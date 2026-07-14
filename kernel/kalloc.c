@@ -11,6 +11,9 @@
 
 void freerange(void *pa_start, void *pa_end);
 
+//my alter: 定义超级页区域的起始地址,预留32个超级页
+#define SUPERBASE (PHYSTOP - 32 * SUPERPGSIZE)
+
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
@@ -27,7 +30,7 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  freerange(end, (void*)SUPERBASE);  //my alter: SUPERBASE
 }
 
 void
@@ -79,4 +82,67 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+//my alter
+struct superpage_run {
+  struct superpage_run* next;
+};
+
+struct {
+  struct spinlock lock;
+  struct superpage_run* freelist;
+} superpage_kmem;
+
+void
+superpage_init(void)
+{
+  initlock(&superpage_kmem.lock, "superpage_kmem");
+
+  //从SUPERBASE开始，PHYSTOP结束
+  uint64 base = SUPERBASE;
+  //确保2MB对齐
+  if (base % SUPERPGSIZE != 0) {
+    base = ((base / SUPERPGSIZE) + 1) * SUPERPGSIZE;
+  }
+
+  for (uint64 pa = base; pa + SUPERPGSIZE <= PHYSTOP; pa += SUPERPGSIZE) {
+    struct superpage_run* r = (struct superpage_run*)pa;
+    r->next = superpage_kmem.freelist;
+    superpage_kmem.freelist = r;
+  }
+}
+
+//分配超级页
+void*
+superalloc(void)
+{
+  struct superpage_run* r;
+  acquire(&superpage_kmem.lock);
+
+  r = superpage_kmem.freelist;
+  if (r)
+    superpage_kmem.freelist = r->next;
+  release(&superpage_kmem.lock);
+
+  if (r)
+    memset((char*)r, 0, SUPERPGSIZE);
+  return (void*)r;
+}
+
+//释放超级页
+void
+superfree(void* pa)
+{
+  struct superpage_run* r;
+
+  if (((uint64)pa % SUPERPGSIZE) != 0 || (uint64)pa >= PHYSTOP)
+    panic("superfree");
+
+  r = (struct superpage_run*)pa;
+
+  acquire(&superpage_kmem.lock);
+  r->next = superpage_kmem.freelist;
+  superpage_kmem.freelist = r;
+  release(&superpage_kmem.lock);
 }
