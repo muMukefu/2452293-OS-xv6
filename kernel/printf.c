@@ -149,3 +149,23 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
 }
+
+//my alter
+void
+backtrace(void)
+{
+  uint64 fp = r_fp(); 
+  uint64 page_base = PGROUNDDOWN(fp);
+
+  printf("backtrace:\n");
+
+  while (fp >= page_base) {
+    uint64 ret_addr = *(uint64*)(fp - 8);
+    printf("%p\n", (void*)ret_addr);
+
+    fp = *(uint64*)(fp - 16);
+
+    if (PGROUNDDOWN(fp) != page_base)
+      break;
+  }
+}

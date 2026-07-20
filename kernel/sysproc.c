@@ -65,6 +65,8 @@ sys_sbrk(void)
 uint64
 sys_pause(void)
 {
+  backtrace();
+
   int n;
   uint ticks0;
 
@@ -105,3 +107,53 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigalarm(void)
+{
+  int interval;
+  uint64 handler;
+
+  // 获取用户态参数
+  argint(0, &interval);
+  argaddr(1, &handler);
+
+  struct proc* p = myproc();
+
+  // sigalarm(0, 0) 停止 alarm
+  if (interval == 0 && handler == 0) {
+    p->alarm_interval = 0;
+    p->alarm_handler = 0;
+    p->alarm_ticks = 0;
+    p->in_handler = 0;
+    return 0;
+  }
+
+  // 设置 alarm
+  p->alarm_interval = interval;
+  p->alarm_handler = handler;
+  p->alarm_ticks = 0;
+  p->in_handler = 0;
+
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc* p = myproc();
+
+  // 在恢复前保存 a0
+  uint64 saved_a0 = p->alarm_trapframe.a0;
+
+  // 恢复完整的 trapframe
+  *p->trapframe = p->alarm_trapframe;
+
+  // 清除状态
+  p->in_handler = 0;
+  p->alarm_ticks = 0;
+
+  // 返回保存的 a0
+  return saved_a0;
+}
+

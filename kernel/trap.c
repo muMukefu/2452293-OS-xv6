@@ -80,9 +80,40 @@ usertrap(void)
   if(killed(p))
     kexit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  // 检查是否是时钟中断
+  if (which_dev == 2) {
+    // 检查 alarm 是否启用，且没有正在执行的 handler
+    if (p->alarm_interval > 0 && p->in_handler == 0) {
+      p->alarm_ticks++;
+
+      // 达到触发间隔
+      if (p->alarm_ticks >= p->alarm_interval) {
+        // 备份
+        p->alarm_trapframe = *p->trapframe;
+
+        // 修改返回地址为用户
+        p->trapframe->epc = p->alarm_handler;
+
+        // 重置计数器
+        p->alarm_ticks = 0;
+
+        // 标记正在执行 handler
+        p->in_handler = 1;
+
+        // 触发 alarm
+        prepare_return();
+
+        // 返回用户态页表
+        return MAKE_SATP(p->pagetable);
+      }
+    }
+
+    // 如果没有触发 alarm，正常让出 CPU
     yield();
+  }
+  // give up the CPU if this is a timer interrupt.
+  //if(which_dev == 2)
+    //yield();
 
   prepare_return();
 
