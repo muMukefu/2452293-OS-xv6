@@ -104,7 +104,32 @@ e1000_transmit(char *buf, int len)
   // return -1 on failure (e.g., there is no descriptor available)
   // so that the caller knows to free buf.
   //
+  acquire(&e1000_lock);
 
+  // 读取TDT寄存器
+  int idx = regs[E1000_TDT];
+
+  // 检查描述符是否可用
+  if ((tx_ring[idx].status & E1000_TXD_STAT_DD) == 0) {
+    // 网卡还没发完这个描述符，没有空闲描述符
+    release(&e1000_lock);
+    return -1;
+  }
+
+  // 释放旧的数据包
+  if (tx_ring[idx].addr != 0) {
+    kfree((void*)tx_ring[idx].addr);
+  }
+
+  // 填写描述符
+  tx_ring[idx].addr = (uint64)buf;
+  tx_ring[idx].cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  tx_ring[idx].length = len;
+
+  // 更新TDT
+  regs[E1000_TDT] = (idx + 1) % TX_RING_SIZE;
+
+  release(&e1000_lock);
   
   return 0;
 }
@@ -117,8 +142,39 @@ e1000_recv(void)
   //
   // Check for packets that have arrived from the e1000
   // Create and deliver a buf for each packet (using net_rx()).
-  //
+  
+  while(1) {
+    // 读取RDT寄存器
+    int idx = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
 
+    // 是否有新数据包（DD 位是否为 1）
+    if ((rx_ring[idx].status & E1000_RXD_STAT_DD) == 0) {
+      break;  // 没有新包
+    }
+
+    // 获取数据包的长度和内存地址
+    int len = rx_ring[idx].length;
+    char* buf = (char*)rx_ring[idx].addr;
+
+    // 把数据包交给网络协议栈
+    net_rx(buf, len);
+
+    // 分配新的缓冲区替换旧的
+    char* new_buf = (char*)kalloc();
+    if (new_buf == 0) {
+      // 内存分配失败，保持旧地址
+      rx_ring[idx].addr = 0;
+    }
+    else {
+      rx_ring[idx].addr = (uint64)new_buf;
+    }
+
+    // 清除描述符的状态
+    rx_ring[idx].status = 0;
+
+    // 更新RDT寄存器
+    regs[E1000_RDT] = idx;
+  }
 }
 
 void
@@ -130,4 +186,5 @@ e1000_intr(void)
   regs[E1000_ICR] = 0xffffffff;
 
   e1000_recv();
+
 }
