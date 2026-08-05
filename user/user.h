@@ -2,6 +2,8 @@
 
 struct stat;
 
+int symlink(const char*, const char*);
+
 // system calls
 int fork(void);
 int exit(int) __attribute__((noreturn));
