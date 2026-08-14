@@ -17,7 +17,6 @@ struct context {
   uint64 s10;
   uint64 s11;
 };
-
 // Per-CPU state.
 struct cpu {
   struct proc *proc;          // The process running on this cpu, or null.
@@ -81,6 +80,18 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// Virtual memory area, describing a region of memory mapped by mmap.
+#define NVMA 16  // maximum number of VMA per process
+struct vma {
+  int used;            // is this VMA in use?
+  uint64 addr;         // starting virtual address of the mapping
+  uint64 len;          // length of the mapping in bytes
+  int prot;            // PROT_READ / PROT_WRITE
+  int flags;           // MAP_SHARED / MAP_PRIVATE
+  struct file *f;      // file being mapped
+  uint offset;         // offset in the file (always 0 in this lab)
+};
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -104,4 +115,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct vma vmas[NVMA];       // mmap'd virtual memory areas
+  uint64 mmap_top;             // next free address for mmap (grows downward)
 };

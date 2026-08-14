@@ -503,3 +503,98 @@ sys_pipe(void)
   }
   return 0;
 }
+
+//
+// mmap system call: memory-map a file into the process address space.
+// Lazy: only records the VMA; actual pages are allocated on page fault.
+//
+uint64
+sys_mmap(void)
+{
+  uint64 addr, len, offset;
+  int prot, flags, fd;
+  struct proc *p = myproc();
+
+  argaddr(0, &addr);       // addr (always 0 in this lab)
+  argaddr(1, &len);        // len (size_t)
+  argint(2, &prot);        // prot
+  argint(3, &flags);       // flags
+  argint(4, &fd);          // fd
+  argaddr(5, &offset);     // offset (off_t, always 0 in this lab)
+
+  if(len == 0)
+    return -1;
+
+  // fd must refer to an open file.
+  if(fd < 0 || fd >= NOFILE || p->ofile[fd] == 0)
+    return -1;
+  struct file *f = p->ofile[fd];
+
+  // MAP_SHARED + PROT_WRITE requires the file to be writable.
+  if((flags & MAP_SHARED) && (prot & PROT_WRITE) && !f->writable)
+    return -1;
+
+  // Find a free VMA slot.
+  struct vma *v = 0;
+  for(int i = 0; i < NVMA; i++){
+    if(p->vmas[i].used == 0){
+      v = &p->vmas[i];
+      break;
+    }
+  }
+  if(v == 0)
+    return -1;
+
+  // Find an unused virtual address region growing downward from mmap_top.
+  uint64 alen = PGROUNDUP(len);
+  if(alen > p->mmap_top - p->sz)
+    return -1;  // no room between heap and mmap_top
+  uint64 va = p->mmap_top - alen;
+
+  // Make sure va does not overlap an existing VMA (it should not, since
+  // mmap_top only moves downward, but check defensively).
+  for(int i = 0; i < NVMA; i++){
+    if(p->vmas[i].used && p->vmas[i].addr < va + alen &&
+       p->vmas[i].addr + p->vmas[i].len > va){
+      return -1;  // overlap; should not happen
+    }
+  }
+
+  // Record the mapping. Increase file refcount so the struct file
+  // survives even if the process closes the fd.
+  v->used   = 1;
+  v->addr   = va;
+  v->len    = len;
+  v->prot   = prot;
+  v->flags  = flags;
+  v->f      = filedup(f);
+  v->offset = 0;  // always 0 in this lab
+
+  p->mmap_top = va;
+
+  return va;
+}
+
+//
+// munmap system call: remove an mmap mapping from the indicated range.
+// Writes back dirty MAP_SHARED pages. May unmap a prefix, suffix, or
+// the whole region.
+//
+uint64
+sys_munmap(void)
+{
+  uint64 addr, len;
+  struct proc *p = myproc();
+
+  argaddr(0, &addr);
+  argaddr(1, &len);
+  if(len == 0)
+    return -1;
+
+  struct vma *v = find_vma(p, addr);
+  if(v == 0)
+    return -1;
+
+  vma_unmap(p, v, addr, len);
+  return 0;
+}

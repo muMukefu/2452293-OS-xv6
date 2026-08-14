@@ -3,8 +3,12 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -19,6 +23,158 @@ extern void forkret(void);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
+
+//
+// Find the VMA (if any) that contains the given virtual address.
+// Returns 0 if no VMA covers the address.
+//
+struct vma*
+find_vma(struct proc *p, uint64 va)
+{
+  for(int i = 0; i < NVMA; i++){
+    if(p->vmas[i].used &&
+       va >= p->vmas[i].addr &&
+       va < p->vmas[i].addr + p->vmas[i].len){
+      return &p->vmas[i];
+    }
+  }
+  return 0;
+}
+
+//
+// Handle a page fault inside an mmap-ed region:
+// allocate a physical page, read the corresponding file content
+// into it, and map it with the VMA's permissions.
+// Returns 0 on success, -1 on failure.
+//
+int
+mmap_page_fault(struct proc *p, struct vma *v, uint64 va)
+{
+  int scause = r_scause();
+  // write fault but not writable -> illegal access
+  if(scause == 15 && !(v->prot & PROT_WRITE))
+    return -1;
+  // read fault but not readable -> illegal access
+  if(scause == 13 && !(v->prot & PROT_READ))
+    return -1;
+
+  va = PGROUNDDOWN(va);
+
+  // already mapped? (e.g. fault on same page twice) nothing to do
+  pte_t *pte = walk(p->pagetable, va, 0);
+  if(pte && (*pte & PTE_V))
+    return 0;
+
+  char *mem = kalloc();
+  if(mem == 0)
+    return -1;
+  memset(mem, 0, PGSIZE);
+
+  // Read the relevant portion of the file into the page.
+  uint64 fileoff = v->offset + (va - v->addr);
+  ilock(v->f->ip);
+  readi(v->f->ip, 0, (uint64)mem, fileoff, PGSIZE);
+  iunlock(v->f->ip);
+
+  // Build PTE permissions.
+  int perm = PTE_U;
+  if(v->prot & PROT_READ)  perm |= PTE_R;
+  if(v->prot & PROT_WRITE) perm |= PTE_W;
+  if(v->prot & PROT_EXEC)  perm |= PTE_X;
+
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0){
+    kfree(mem);
+    return -1;
+  }
+  return 0;
+}
+
+//
+// Unmap the range [addr, addr+len) from the given VMA, writing back
+// dirty MAP_SHARED pages and freeing physical memory. Updates the VMA
+// (or clears it if the whole region is unmapped).
+// Assumes addr..addr+len is a prefix, suffix, or the whole VMA.
+//
+void
+vma_unmap(struct proc *p, struct vma *v, uint64 addr, uint64 len)
+{
+  uint64 vma_start = v->addr;
+  uint64 vma_end   = v->addr + v->len;
+
+  // Clip the requested range to the VMA's bounds.
+  if(addr < vma_start){
+    len -= (vma_start - addr);
+    addr = vma_start;
+  }
+  if(addr + len > vma_end)
+    len = vma_end - addr;
+  if(len == 0)
+    return;
+
+  uint64 unmap_start = PGROUNDDOWN(addr);
+  uint64 unmap_end   = PGROUNDUP(addr + len);
+  if(unmap_end > vma_end)
+    unmap_end = PGROUNDUP(vma_end);
+  uint64 npages = (unmap_end - unmap_start) / PGSIZE;
+
+  // Write back MAP_SHARED pages that were actually faulted in.
+  // The lab spec allows writing back without checking the D (dirty) bit,
+  // so we write back every valid page in the range.
+  if(v->flags & MAP_SHARED){
+    for(uint64 a = unmap_start; a < unmap_end; a += PGSIZE){
+      pte_t *pte = walk(p->pagetable, a, 0);
+      if(pte == 0)
+        continue;
+      if((*pte & PTE_V) == 0)
+        continue;
+      uint64 pa = PTE2PA(*pte);
+      uint64 fileoff = v->offset + (a - vma_start);
+      begin_op();
+      ilock(v->f->ip);
+      //writei(v->f->ip, 0, (uint64)pa, fileoff, PGSIZE);
+      //iunlock(v->f->ip);
+      //end_op();
+      // Determine how many bytes to write back, limited by file size.
+      uint64 want = PGSIZE;
+      if (fileoff >= v->f->ip->size) {
+        iunlock(v->f->ip);
+        end_op();
+        continue;
+      }
+      if (fileoff + want > v->f->ip->size)
+        want = v->f->ip->size - fileoff;
+
+      writei(v->f->ip, 0, (uint64)pa, fileoff, want);
+      iunlock(v->f->ip);
+      end_op();
+    }
+  }
+
+  // Free the physical pages and remove the mappings.
+  if(npages > 0)
+    uvmunmap(p->pagetable, unmap_start, npages, 1);
+
+  // Update or clear the VMA.
+  if(unmap_start <= vma_start && unmap_end >= vma_end){
+    // whole VMA unmapped
+    fileclose(v->f);
+    v->used  = 0;
+    v->f     = 0;
+  } else if(unmap_start <= vma_start){
+    // prefix unmapped: shift the VMA forward
+    uint64 removed = unmap_end - vma_start;
+    v->addr   = unmap_end;
+    v->len    = vma_end - unmap_end;
+    v->offset += removed;
+  } else if(unmap_end >= vma_end){
+    // suffix unmapped: shrink the VMA
+    v->len = unmap_start - vma_start;
+  } else {
+    // hole in the middle: not expected per lab spec; shrink to the
+    // prefix and drop the rest (mmaptest never exercises this).
+    v->len = unmap_start - vma_start;
+  }
+}
 
 // helps ensure that wakeups of wait()ing
 // parents are not lost. helps obey the
@@ -139,6 +295,10 @@ found:
     release(&p->lock);
     return 0;
   }
+
+  // No mmap regions yet; mmap area grows downward from below TRAPFRAME.
+  memset(p->vmas, 0, sizeof(p->vmas));
+  p->mmap_top = PGROUNDDOWN(TRAPFRAME);
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -285,6 +445,16 @@ kfork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  // Copy mmap VMA table so the child sees the same mapped regions.
+  // The child gets its own physical pages on demand (page fault).
+  for(i = 0; i < NVMA; i++){
+    if(p->vmas[i].used){
+      np->vmas[i] = p->vmas[i];
+      filedup(np->vmas[i].f);
+    }
+  }
+  np->mmap_top = p->mmap_top;
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -328,6 +498,14 @@ kexit(int status)
   if(p == initproc)
     panic("init exiting");
 
+  // Unmap all mmap-ed regions: write back dirty MAP_SHARED pages and
+  // free the physical pages, as if munmap had been called for each.
+  for(int i = 0; i < NVMA; i++){
+    if(p->vmas[i].used){
+      vma_unmap(p, &p->vmas[i], p->vmas[i].addr, p->vmas[i].len);
+    }
+  }
+
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){
@@ -336,7 +514,6 @@ kexit(int status)
       p->ofile[fd] = 0;
     }
   }
-
   begin_op();
   iput(p->cwd);
   end_op();

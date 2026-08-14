@@ -109,6 +109,11 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 
+// proc.c (VMA helpers used by trap.c and sysfile.c)
+struct vma* find_vma(struct proc*, uint64);
+int         mmap_page_fault(struct proc*, struct vma*, uint64);
+void        vma_unmap(struct proc*, struct vma*, uint64, uint64);
+
 // swtch.S
 void            swtch(struct context*, struct context*);
 
@@ -239,6 +244,6 @@ int             e1000_transmit(char *, int);
 
 // net.c
 void            netinit(void);
-void            net_rx(char *buf, int len);
+void            net_rx(char *buf, int len)
 
 #endif
