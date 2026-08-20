@@ -105,5 +105,5 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  struct usyscall* usyscall;  // my alter: 指向USYSCALL映射的页面
+  struct usyscall* usyscall;  // 指向USYSCALL映射的页面
 };

@@ -66,7 +66,7 @@ void            ireclaim(int);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
-//my alter
+
 void            superpage_init(void);  
 void*           superalloc(void); 
 void            superfree(void*); 

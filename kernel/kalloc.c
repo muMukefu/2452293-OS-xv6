@@ -11,7 +11,7 @@
 
 void freerange(void *pa_start, void *pa_end);
 
-//my alter: 定义超级页区域的起始地址,预留32个超级页
+//定义超级页区域的起始地址,预留32个超级页
 #define SUPERBASE (PHYSTOP - 32 * SUPERPGSIZE)
 
 extern char end[]; // first address after kernel.
@@ -84,7 +84,6 @@ kalloc(void)
   return (void*)r;
 }
 
-//my alter
 struct superpage_run {
   struct superpage_run* next;
 };

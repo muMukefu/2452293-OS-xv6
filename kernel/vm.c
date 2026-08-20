@@ -237,7 +237,6 @@ uvmcreate()
 // page-aligned. It's OK if the mappings don't exist.
 // Optionally free the physical memory.
 
-//my alter
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
