@@ -339,36 +339,36 @@ ip_rx(char *buf, int len)
   //
   // Your code here.
   //
-   // 1. 检查长度是否足够
+   // 检查长度是否足够
   if (len < sizeof(struct eth) + sizeof(struct ip) + sizeof(struct udp)) {
     kfree(buf);
     return;
   }
 
-  // 2. 获取 IP 头和 UDP 头
+  // 获取 IP 头和 UDP 头
   struct ip* ip = (struct ip*)(buf + sizeof(struct eth));
   struct udp* udp = (struct udp*)(buf + sizeof(struct eth) + sizeof(struct ip));
 
-  // 3. 检查是否是 UDP 协议
+  // 检查是否是 UDP 协议
   if (ip->ip_p != IPPROTO_UDP) {
     kfree(buf);
     return;
   }
 
-  // 4. 获取目标端口（网络字节序转主机字节序）
+  // 获取目标端口
   uint16 dport = ntohs(udp->dport);
   uint16 sport = ntohs(udp->sport);
   uint32 src_ip = ntohl(ip->ip_src);
   uint16 udp_len = ntohs(udp->ulen);
   int payload_len = udp_len - sizeof(struct udp);
 
-  // 5. 检查 UDP 长度是否合法
+  // 检查 UDP 长度是否合法
   if (udp_len < sizeof(struct udp) || payload_len < 0) {
     kfree(buf);
     return;
   }
 
-  // 6. 查找绑定的端口
+  // 查找绑定的端口
   acquire(&netlock);
   int idx = find_bound_port(dport);
   if (idx < 0) {
@@ -379,7 +379,7 @@ ip_rx(char *buf, int len)
 
   struct bound_port* bp = &bound_ports[idx];
 
-  // 7. 检查队列是否已满
+  // 检查队列是否已满
   acquire(&bp->lock);
   if (bp->packet_count >= MAX_PACKETS_PER_PORT) {
     release(&bp->lock);
@@ -388,7 +388,7 @@ ip_rx(char *buf, int len)
     return;
   }
 
-  // 8. 创建包队列项
+  // 创建包队列项
   struct udp_packet* pkt = (struct udp_packet*)kalloc();
   if (pkt == 0) {
     release(&bp->lock);
@@ -406,7 +406,7 @@ ip_rx(char *buf, int len)
   pkt->payload = (char*)(udp + 1);  // UDP 负载起始位置
   pkt->next = 0;
 
-  // 9. 加入队列尾部
+  // 加入队列尾部
   if (bp->head == 0) {
     bp->head = pkt;
     bp->tail = pkt;
@@ -420,7 +420,7 @@ ip_rx(char *buf, int len)
   release(&bp->lock);
   release(&netlock);
 
-  // 10. 唤醒等待该端口的进程
+  // 唤醒等待该端口的进程
   wakeup(&bp->lock);
 }
 
