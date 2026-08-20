@@ -1,6 +1,6 @@
 #ifndef __ASSEMBLER__
 
-// my alter: ∂¡»°s0
+//∂¡»°s0
 static inline uint64
 r_fp()
 {

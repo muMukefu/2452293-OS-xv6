@@ -150,7 +150,6 @@ printfinit(void)
   initlock(&pr.lock, "pr");
 }
 
-//my alter
 void
 backtrace(void)
 {

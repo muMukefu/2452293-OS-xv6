@@ -105,7 +105,7 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  //my aletr:添加 alarm 相关字段
+  //添加 alarm 相关字段
   int alarm_interval;          // 触发间隔 (ticks)
   uint64 alarm_handler;        // 用户态 handler 地址
   int alarm_ticks;             // 已累计的 ticks
