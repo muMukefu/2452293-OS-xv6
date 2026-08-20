@@ -106,7 +106,6 @@ sys_uptime(void)
   return xticks;
 }
 
-//my alter 
 uint64
 sys_interpose(void)
 {

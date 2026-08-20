@@ -316,7 +316,6 @@ sys_open(void)
   if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
 
-  //my alter:检查是否被mask且路径不匹配
   if (p->mask & (1 << SYS_open)) {
     int same = 1;
     int i = 0;
@@ -461,7 +460,6 @@ sys_exec(void)
     return -1;
   }
 
-  //my alter:检查是否被mask且路径不匹配
   if (p->mask & (1 << SYS_exec)) {
     int same = 1;
     int i = 0;

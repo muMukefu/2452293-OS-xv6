@@ -48,5 +48,4 @@ void printf(const char*, ...) __attribute__ ((format (printf, 1, 2)));
 void* malloc(uint);
 void free(void*);
 
-// my alter: system calls
 int interpose(int mask, char* path);

@@ -35,7 +35,7 @@ main(int argc, char *argv[])
       start[i + 10] == 'e' && start[i + 11] == 'l' &&
       start[i + 12] == 'p' && start[i + 13] == '.') {
 
-      // 秘密在"This may help."后面 16 字节处
+      // 在"This may help."后面 16 字节处
       char* secret = start + i + 16;
 
       int len = 0;
@@ -50,9 +50,5 @@ main(int argc, char *argv[])
       }
     }
   }
-
-
-  exit(0);
-
   exit(0);
 }
