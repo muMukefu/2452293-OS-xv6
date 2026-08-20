@@ -81,15 +81,15 @@ struct trapframe {
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Virtual memory area, describing a region of memory mapped by mmap.
-#define NVMA 16  // maximum number of VMA per process
+#define NVMA 16
 struct vma {
-  int used;            // is this VMA in use?
-  uint64 addr;         // starting virtual address of the mapping
-  uint64 len;          // length of the mapping in bytes
-  int prot;            // PROT_READ / PROT_WRITE
+  int used;            // VMA 是否在使用
+  uint64 addr;         // 映射起始虚拟地址
+  uint64 len;          // 映射长度（字节）
+  int prot;            // PROT_READ / PROT_WRITE / PROT_EXEC
   int flags;           // MAP_SHARED / MAP_PRIVATE
-  struct file *f;      // file being mapped
-  uint offset;         // offset in the file (always 0 in this lab)
+  struct file* f;      // 被映射的文件
+  uint offset;         // 文件偏移量（本实验固定为 0）
 };
 
 // Per-process state
@@ -115,6 +115,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  struct vma vmas[NVMA];       // mmap'd virtual memory areas
-  uint64 mmap_top;             // next free address for mmap (grows downward)
+  
+  struct vma vmas[NVMA];       
+  uint64 mmap_top;             
 };

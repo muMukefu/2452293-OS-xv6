@@ -24,10 +24,6 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
-//
-// Find the VMA (if any) that contains the given virtual address.
-// Returns 0 if no VMA covers the address.
-//
 struct vma*
 find_vma(struct proc *p, uint64 va)
 {
@@ -41,67 +37,51 @@ find_vma(struct proc *p, uint64 va)
   return 0;
 }
 
-//
-// Handle a page fault inside an mmap-ed region:
-// allocate a physical page, read the corresponding file content
-// into it, and map it with the VMA's permissions.
-// Returns 0 on success, -1 on failure.
-//
 int
 mmap_page_fault(struct proc *p, struct vma *v, uint64 va)
 {
   int scause = r_scause();
-  // write fault but not writable -> illegal access
-  if(scause == 15 && !(v->prot & PROT_WRITE))
-    return -1;
-  // read fault but not readable -> illegal access
-  if(scause == 13 && !(v->prot & PROT_READ))
-    return -1;
+  if (scause == 15 && !(v->prot & PROT_WRITE)) 
+    return -1;  // 写但不可写
+  if (scause == 13 && !(v->prot & PROT_READ))  
+    return -1;  // 读但不可读
 
   va = PGROUNDDOWN(va);
+  pte_t* pte = walk(p->pagetable, va, 0);
 
-  // already mapped? (e.g. fault on same page twice) nothing to do
-  pte_t *pte = walk(p->pagetable, va, 0);
-  if(pte && (*pte & PTE_V))
-    return 0;
+  if (pte && (*pte & PTE_V)) 
+    return 0;        // 已映射，无需处理
 
-  char *mem = kalloc();
-  if(mem == 0)
+  char* mem = kalloc();
+
+  if (mem == 0)
     return -1;
+
   memset(mem, 0, PGSIZE);
 
-  // Read the relevant portion of the file into the page.
   uint64 fileoff = v->offset + (va - v->addr);
   ilock(v->f->ip);
-  readi(v->f->ip, 0, (uint64)mem, fileoff, PGSIZE);
+  readi(v->f->ip, 0, (uint64)mem, fileoff, PGSIZE);  // 读文件内容到物理页
   iunlock(v->f->ip);
 
-  // Build PTE permissions.
   int perm = PTE_U;
-  if(v->prot & PROT_READ)  perm |= PTE_R;
-  if(v->prot & PROT_WRITE) perm |= PTE_W;
-  if(v->prot & PROT_EXEC)  perm |= PTE_X;
 
-  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0){
-    kfree(mem);
-    return -1;
+  if (v->prot & PROT_READ)  perm |= PTE_R;
+  if (v->prot & PROT_WRITE) perm |= PTE_W;
+  if (v->prot & PROT_EXEC)  perm |= PTE_X;
+  if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0) {
+    kfree(mem); return -1;
   }
   return 0;
 }
 
-//
-// Unmap the range [addr, addr+len) from the given VMA, writing back
-// dirty MAP_SHARED pages and freeing physical memory. Updates the VMA
-// (or clears it if the whole region is unmapped).
-// Assumes addr..addr+len is a prefix, suffix, or the whole VMA.
-//
 void
 vma_unmap(struct proc *p, struct vma *v, uint64 addr, uint64 len)
 {
   uint64 vma_start = v->addr;
   uint64 vma_end   = v->addr + v->len;
 
-  // Clip the requested range to the VMA's bounds.
+  // 裁剪请求范围到 VMA 边界
   if(addr < vma_start){
     len -= (vma_start - addr);
     addr = vma_start;
@@ -117,9 +97,7 @@ vma_unmap(struct proc *p, struct vma *v, uint64 addr, uint64 len)
     unmap_end = PGROUNDUP(vma_end);
   uint64 npages = (unmap_end - unmap_start) / PGSIZE;
 
-  // Write back MAP_SHARED pages that were actually faulted in.
-  // The lab spec allows writing back without checking the D (dirty) bit,
-  // so we write back every valid page in the range.
+  // MAP_SHARED 写回脏页
   if(v->flags & MAP_SHARED){
     for(uint64 a = unmap_start; a < unmap_end; a += PGSIZE){
       pte_t *pte = walk(p->pagetable, a, 0);
@@ -127,15 +105,13 @@ vma_unmap(struct proc *p, struct vma *v, uint64 addr, uint64 len)
         continue;
       if((*pte & PTE_V) == 0)
         continue;
+
       uint64 pa = PTE2PA(*pte);
       uint64 fileoff = v->offset + (a - vma_start);
       begin_op();
       ilock(v->f->ip);
-      //writei(v->f->ip, 0, (uint64)pa, fileoff, PGSIZE);
-      //iunlock(v->f->ip);
-      //end_op();
-      // Determine how many bytes to write back, limited by file size.
       uint64 want = PGSIZE;
+
       if (fileoff >= v->f->ip->size) {
         iunlock(v->f->ip);
         end_op();
@@ -150,28 +126,22 @@ vma_unmap(struct proc *p, struct vma *v, uint64 addr, uint64 len)
     }
   }
 
-  // Free the physical pages and remove the mappings.
   if(npages > 0)
     uvmunmap(p->pagetable, unmap_start, npages, 1);
 
-  // Update or clear the VMA.
-  if(unmap_start <= vma_start && unmap_end >= vma_end){
-    // whole VMA unmapped
+  // 调整 VMA：前缀/后缀/全部
+  if(unmap_start <= vma_start && unmap_end >= vma_end){  
     fileclose(v->f);
     v->used  = 0;
     v->f     = 0;
   } else if(unmap_start <= vma_start){
-    // prefix unmapped: shift the VMA forward
     uint64 removed = unmap_end - vma_start;
     v->addr   = unmap_end;
     v->len    = vma_end - unmap_end;
     v->offset += removed;
   } else if(unmap_end >= vma_end){
-    // suffix unmapped: shrink the VMA
     v->len = unmap_start - vma_start;
   } else {
-    // hole in the middle: not expected per lab spec; shrink to the
-    // prefix and drop the rest (mmaptest never exercises this).
     v->len = unmap_start - vma_start;
   }
 }
