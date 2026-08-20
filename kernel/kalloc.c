@@ -30,14 +30,14 @@ struct {
 struct spinlock ref_lock;
 int refcount[(PHYSTOP - KERNBASE) / PGSIZE];  // 物理页引用计数数组
 
-// 辅助函数：获取物理页索引
+// 获取物理页索引
 #define PA2IDX(pa) (((uint64)pa - KERNBASE) / PGSIZE)
 
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  initlock(&ref_lock, "refcount");  // my alter
+  initlock(&ref_lock, "refcount"); 
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -46,7 +46,7 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  acquire(&ref_lock);  // 
+  acquire(&ref_lock); 
   for (; p + PGSIZE <= (char*)pa_end; p += PGSIZE) {
     refcount[PA2IDX(p)] = 1;  // 初始化引用计数为1
   }  
@@ -71,7 +71,7 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // 减少引用计数，只有为0时才真正释放
+  // 减少引用计数，为0释放
   acquire(&ref_lock);
   int idx = PA2IDX((uint64)pa);
   if (refcount[idx] > 0) {
@@ -79,7 +79,7 @@ kfree(void *pa)
   }
   if (refcount[idx] > 0) {
     release(&ref_lock);
-    return;  // 还有引用，不释放
+    return;  // 不释放
   }
   release(&ref_lock);
 
@@ -118,7 +118,6 @@ kalloc(void)
   return (void*)r;
 }
 
-// my alter
 void
 incref(uint64 pa)
 {
@@ -129,7 +128,7 @@ incref(uint64 pa)
   release(&ref_lock);
 }
 
-// my alter: 减少引用计数（其实就是调用kfree）
+// 减少引用计数（其实就是调用kfree）
 void
 decref(uint64 pa)
 {

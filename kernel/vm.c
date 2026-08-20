@@ -17,7 +17,6 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
-// my alter
 void incref(uint64 pa);
 void decref(uint64 pa);
 int cow_handle(pagetable_t pagetable, uint64 va);
@@ -330,16 +329,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
     // 增加物理页的引用计数
     incref(pa);
-
-    /*
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
-    }
-    */
   }
   return 0;
 
@@ -518,11 +507,6 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
       return 0;  // 处理失败
     }
   }
-  
-  /*
-  if (va >= p->sz)
-    return 0;
-  va = PGROUNDDOWN(va);*/
 
   if(ismapped(pagetable, va)) {
     return 0;
@@ -540,7 +524,6 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
   return mem;
 }
 
-// my alter
 int
 cow_handle(pagetable_t pagetable, uint64 va)
 {
@@ -569,7 +552,7 @@ cow_handle(pagetable_t pagetable, uint64 va)
   // 复制内容
   memmove((void*)newpa, (void*)pa, PGSIZE);
 
-  // 修改标志：清除COW，设置W
+  // 清除COW，设置W
   flags = (flags & ~PTE_COW) | PTE_W;
 
   // 解除旧映射（不释放物理页，引用计数会处理）
