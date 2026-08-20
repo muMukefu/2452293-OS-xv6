@@ -94,7 +94,7 @@ kalloc(void)
     kmem[cpu].freelist = r->next;
   release(&kmem[cpu].lock);
 
-  // 如果当前 CPU 没有空闲页，从其他 CPU 偷
+  // 当前 CPU 没有空闲页
   if (!r) {
     for (int i = 0; i < NCPU; i++) {
       if (i == cpu) continue;
@@ -114,16 +114,4 @@ kalloc(void)
   if (r)
     memset((char*)r, 5, PGSIZE);
   return (void*)r;
-
-  /*
-  acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
-  release(&kmem.lock);
-
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
-  return (void*)r;
-  */
 }
