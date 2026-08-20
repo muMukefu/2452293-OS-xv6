@@ -301,77 +301,6 @@ create(char *path, short type, short major, short minor)
   return 0;
 }
 
-/*
-uint64
-sys_open(void)
-{
-  char path[MAXPATH];
-  int fd, omode;
-  struct file *f;
-  struct inode *ip;
-  int n;
-
-  argint(1, &omode);
-  if((n = argstr(0, path, MAXPATH)) < 0)
-    return -1;
-
-  begin_op();
-
-  if(omode & O_CREATE){
-    ip = create(path, T_FILE, 0, 0);
-    if(ip == 0){
-      end_op();
-      return -1;
-    }
-  } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
-    }
-    ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
-      iunlockput(ip);
-      end_op();
-      return -1;
-    }
-  }
-
-  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
-    iunlockput(ip);
-    end_op();
-    return -1;
-  }
-
-  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
-    if(f)
-      fileclose(f);
-    iunlockput(ip);
-    end_op();
-    return -1;
-  }
-
-  if(ip->type == T_DEVICE){
-    f->type = FD_DEVICE;
-    f->major = ip->major;
-  } else {
-    f->type = FD_INODE;
-    f->off = 0;
-  }
-  f->ip = ip;
-  f->readable = !(omode & O_WRONLY);
-  f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
-
-  if((omode & O_TRUNC) && ip->type == T_FILE){
-    itrunc(ip);
-  }
-
-  iunlock(ip);
-  end_op();
-
-  return fd;
-}
-*/
-
 uint64
 sys_open(void)
 {
@@ -408,7 +337,7 @@ sys_open(void)
   }
 
   // 处理符号链接
-  // 如果文件是符号链接，且没有指定 O_NOFOLLOW，则跟随链接
+  // 跟随链接
   if (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
     int depth = 0;
     char link_target[MAXPATH];
@@ -421,8 +350,7 @@ sys_open(void)
       }
 
       // 读取符号链接的目标路径
-      // 先解锁当前 inode，因为 readi 需要锁
-      // 但我们已经在 ilock 状态，所以用 readi 读取
+      // 用 readi 读取
       memset(link_target, 0, MAXPATH);
       if (readi(ip, 0, (uint64)link_target, 0, MAXPATH) <= 0) {
         iunlockput(ip);
@@ -440,7 +368,7 @@ sys_open(void)
       }
       ilock(ip);
 
-      // 如果是目录且不是只读打开，报错
+      // 报错
       if (ip->type == T_DIR && omode != O_RDONLY) {
         iunlockput(ip);
         end_op();
@@ -630,8 +558,7 @@ sys_symlink(void)
 
   begin_op();
 
-  // 创建符号链接 inode
-  // 使用 create() 函数，类型为 T_SYMLINK
+  // 使用 create() 函数
   ip = create(path, T_SYMLINK, 0, 0);
   if (ip == 0) {
     end_op();
@@ -639,7 +566,6 @@ sys_symlink(void)
   }
 
   // 将 target 路径写入 inode 的数据块
-  // 注意：路径字符串可能比一个块小，直接写入第一个数据块
   if (writei(ip, 0, (uint64)target, 0, strlen(target) + 1) < 0) {
     // 写入失败，删除 inode
     iunlockput(ip);
